@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { getUser, handleAuthCallback, login, logout, onAuthChange } from "netlify-identity-widget";
+import { getUser, handleAuthCallback, login, logout, onAuthChange } from "@netlify/identity";
 
 type User = Awaited<ReturnType<typeof getUser>>;
 type SignedInUser = NonNullable<User>;
