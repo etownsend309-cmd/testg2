@@ -1,8 +1,28 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { getUser, handleAuthCallback, login, logout, onAuthChange } from "@netlify/identity";
+import {
+  acceptInvite,
+  getUser,
+  handleAuthCallback,
+  login,
+  logout,
+  onAuthChange,
+  requestPasswordRecovery,
+  updateUser,
+} from "@netlify/identity";
 
 type User = Awaited<ReturnType<typeof getUser>>;
 type SignedInUser = NonNullable<User>;
+
+/**
+ * Which card the sign-in side shows:
+ * - signin: email + password
+ * - forgot: ask for an email and send a reset link
+ * - reset:  the user arrived from a reset email and must choose a new password
+ * - invite: the user arrived from an invitation email and must choose their first password
+ */
+type Mode = "signin" | "forgot" | "reset" | "invite";
+
+const MIN_PASSWORD_LENGTH = 8;
 
 /** Same shield used by the sidebar brand in App.tsx. */
 function ShieldIcon() {
@@ -22,23 +42,45 @@ function Brand() {
   );
 }
 
+/** Checks the two "new password" fields and returns an error message, or "" if they're fine. */
+function checkNewPassword(password: string, confirm: string) {
+  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (password !== confirm) return "The two passwords don't match.";
+  return "";
+}
+
 /**
  * Shows the sign-in screen until a Netlify Identity session exists, then
- * renders the review app with the signed-in user.
+ * renders the review app with the signed-in user. Also handles the
+ * forgot-password, reset-password and accept-invite flows.
  */
 export function AuthGate({ children }: { children: (user: SignedInUser, signOut: () => void) => ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [mode, setMode] = useState<Mode>("signin");
+  const [inviteToken, setInviteToken] = useState("");
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        await handleAuthCallback();
+        // Reads #recovery_token / #invite_token etc. from the URL after a user clicks an email link.
+        const result = await handleAuthCallback();
+        if (!active) return;
+        if (result?.type === "recovery") {
+          // Logged in by the link, but they still need to pick a new password.
+          setMode("reset");
+        } else if (result?.type === "invite" && result.token) {
+          setInviteToken(result.token);
+          setMode("invite");
+        }
         const current = await getUser();
         if (active) setUser(current);
+      } catch {
+        if (active) setError("That link is invalid or has expired. Request a new one below.");
       } finally {
         if (active) setLoading(false);
       }
@@ -50,9 +92,16 @@ export function AuthGate({ children }: { children: (user: SignedInUser, signOut:
     };
   }, []);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError("");
+    setNotice("");
+  }
+
+  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
     try {
@@ -60,6 +109,51 @@ export function AuthGate({ children }: { children: (user: SignedInUser, signOut:
     } catch (err) {
       const status = (err as { status?: number }).status;
       setError(status === 401 || status === 400 ? "That email and password don't match an account." : "Sign-in failed. Try again in a moment.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleForgot(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      await requestPasswordRecovery(String(form.get("email")));
+    } catch {
+      // Ignore lookup failures so the form doesn't reveal which emails have accounts.
+    } finally {
+      setSubmitting(false);
+      setMode("signin");
+      setNotice("If that email has an account, a reset link is on its way. Check your inbox.");
+    }
+  }
+
+  async function handleNewPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password"));
+    const problem = checkNewPassword(password, String(form.get("confirm")));
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const updated = mode === "invite" ? await acceptInvite(inviteToken, password) : await updateUser({ password });
+      // Clear the token from the address bar so a refresh doesn't reuse it.
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      setInviteToken("");
+      setMode("signin");
+      setUser(updated);
+    } catch {
+      setError(
+        mode === "invite"
+          ? "This invitation link is invalid or has expired. Ask your project lead to resend it."
+          : "Couldn't save your new password. The reset link may have expired — request a new one.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -74,8 +168,110 @@ export function AuthGate({ children }: { children: (user: SignedInUser, signOut:
     );
   }
 
-  if (user) {
-    return <>{children(user, async () => { await logout(); setUser(null); })}</>;
+  // A recovery link signs the user in, so hold them on the reset card until they set a password.
+  if (user && mode !== "reset") {
+    return <>{children(user, async () => { await logout(); setUser(null); switchMode("signin"); })}</>;
+  }
+
+  const messages = (
+    <>
+      <div role="alert">{error && <p className="error-message">{error}</p>}</div>
+      <div role="status">{notice && <p className="auth-notice">{notice}</p>}</div>
+    </>
+  );
+
+  let card: ReactNode;
+
+  if (mode === "forgot") {
+    card = (
+      <form className="panel auth-card" onSubmit={handleForgot} aria-busy={submitting}>
+        <div className="page-heading">
+          <span className="eyebrow">Password help</span>
+          <h1>Reset password</h1>
+          <p>Enter the email you sign in with and we'll send you a link to choose a new password.</p>
+        </div>
+        <fieldset className="intake-fields" disabled={submitting}>
+          <legend className="visually-hidden">Password reset request</legend>
+          <div className="form-grid auth-fields">
+            <label htmlFor="forgot-email">
+              <span>Email</span>
+              <input id="forgot-email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" />
+            </label>
+          </div>
+          {messages}
+          <div className="form-actions auth-actions">
+            <button type="submit" className="primary-button">{submitting ? "Sending…" : "Send reset link →"}</button>
+          </div>
+          <p className="auth-switch">
+            <button type="button" className="text-button" onClick={() => switchMode("signin")}>← Back to sign in</button>
+          </p>
+        </fieldset>
+      </form>
+    );
+  } else if (mode === "reset" || mode === "invite") {
+    const isInvite = mode === "invite";
+    card = (
+      <form className="panel auth-card" onSubmit={handleNewPassword} aria-busy={submitting} noValidate>
+        <div className="page-heading">
+          <span className="eyebrow">{isInvite ? "Welcome" : "Password help"}</span>
+          <h1>{isInvite ? "Set your password" : "Choose a new password"}</h1>
+          <p>
+            {isInvite
+              ? "You've been invited to ClausePilot. Choose a password to finish creating your account."
+              : `Signed in as ${user?.email ?? "your account"}. Pick a new password to finish.`}
+          </p>
+        </div>
+        <fieldset className="intake-fields" disabled={submitting}>
+          <legend className="visually-hidden">New password</legend>
+          <div className="form-grid auth-fields">
+            <label htmlFor="new-password">
+              <span>New password</span>
+              <input id="new-password" name="password" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} aria-invalid={Boolean(error)} />
+            </label>
+            <label htmlFor="confirm-password">
+              <span>Confirm password</span>
+              <input id="confirm-password" name="confirm" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} aria-invalid={Boolean(error)} />
+            </label>
+          </div>
+          {messages}
+          <div className="form-actions auth-actions">
+            <button type="submit" className="primary-button">
+              {submitting ? "Saving…" : isInvite ? "Create account →" : "Save password →"}
+            </button>
+          </div>
+        </fieldset>
+      </form>
+    );
+  } else {
+    card = (
+      <form className="panel auth-card" onSubmit={handleSignIn} aria-busy={submitting}>
+        <div className="page-heading">
+          <span className="eyebrow">Welcome back</span>
+          <h1>Sign in</h1>
+          <p>Use the email address your invitation was sent to.</p>
+        </div>
+        <fieldset className="intake-fields" disabled={submitting}>
+          <legend className="visually-hidden">Sign-in details</legend>
+          <div className="form-grid auth-fields">
+            <label htmlFor="auth-email">
+              <span>Email</span>
+              <input id="auth-email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" aria-invalid={Boolean(error)} />
+            </label>
+            <label htmlFor="auth-password">
+              <span>Password</span>
+              <input id="auth-password" name="password" type="password" autoComplete="current-password" required aria-invalid={Boolean(error)} />
+            </label>
+          </div>
+          {messages}
+          <div className="form-actions auth-actions">
+            <button type="submit" className="primary-button">{submitting ? "Signing in…" : "Sign in →"}</button>
+          </div>
+          <p className="auth-switch">
+            <button type="button" className="text-button" onClick={() => switchMode("forgot")}>Forgot password?</button>
+          </p>
+        </fieldset>
+      </form>
+    );
   }
 
   return (
@@ -93,32 +289,7 @@ export function AuthGate({ children }: { children: (user: SignedInUser, signOut:
         </div>
       </section>
 
-      <section className="auth-form-side">
-        <form className="panel auth-card" onSubmit={handleSubmit} aria-busy={submitting}>
-          <div className="page-heading">
-            <span className="eyebrow">Welcome back</span>
-            <h1>Sign in</h1>
-            <p>Use the email address your invitation was sent to.</p>
-          </div>
-          <fieldset className="intake-fields" disabled={submitting}>
-            <legend className="visually-hidden">Sign-in details</legend>
-            <div className="form-grid auth-fields">
-              <label htmlFor="auth-email">
-                <span>Email</span>
-                <input id="auth-email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" aria-invalid={Boolean(error)} />
-              </label>
-              <label htmlFor="auth-password">
-                <span>Password</span>
-                <input id="auth-password" name="password" type="password" autoComplete="current-password" required aria-invalid={Boolean(error)} />
-              </label>
-            </div>
-            <div role="alert">{error && <p className="error-message">{error}</p>}</div>
-            <div className="form-actions auth-actions">
-              <button type="submit" className="primary-button">{submitting ? "Signing in…" : "Sign in →"}</button>
-            </div>
-          </fieldset>
-        </form>
-      </section>
+      <section className="auth-form-side">{card}</section>
     </div>
   );
 }
