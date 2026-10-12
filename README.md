@@ -86,8 +86,9 @@ npx playwright install chromium
 npm run dev
 ```
 
-Then open <http://127.0.0.1:5173>. Choose **Load demo agreement** to exercise
-the full workflow without supplying a file.
+Then open <http://127.0.0.1:5173>. Choose **New agreement**, then **Load demo agreement** to fill the submission
+form with sample metadata and a document. Click **Create review** to submit it
+and view its reference and status in **My submissions**.
 
 The extraction harness is at <http://127.0.0.1:5173/?view=extraction-poc>, also
 reachable from the link at the bottom of the sidebar. Drop a PDF onto its upload

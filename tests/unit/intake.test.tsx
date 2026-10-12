@@ -11,16 +11,34 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../../src/App";
+import { extractText } from "../../src/lib/extractText";
+vi.mock("../../src/lib/extractText", () => ({ extractText: vi.fn() }));
+const STORAGE_KEY = "clausepilot-agreements-v1";
+const fields = [
+  ["Vendor", "Northstar Data", "Enter a vendor."],
+  ["Agreement type", "Master services agreement", "Enter an agreement type."],
+  ["Business unit", "Shared services", "Enter a business unit."],
+  ["Needed-by date", "2026-12-01", "Enter a needed-by date."],
+] as const;
+async function fillMetadata(except?: string) {
+  for (const [label, value] of fields) {
+    if (label !== except) await userEvent.type(screen.getByLabelText(new RegExp(label)), value);
+  }
+}
+const records = () => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   localStorage.clear();
 });
 
 beforeEach(() => {
+  vi.mocked(extractText).mockReset();
+  vi.mocked(extractText).mockResolvedValue({ text: "GOVERNING LAW. Governed by the laws of Georgia.", warnings: [] });
   localStorage.clear();
 });
 
@@ -66,18 +84,113 @@ describe("agreement intake", () => {
     expect(title.value).toBe("vendor-sow.txt");
   });
 
-  it("extracts a dropped text agreement and opens it for review", async () => {
+  it("extracts a dropped agreement and saves a trackable record", async () => {
     const dropZone = await openIntake();
 
     fireEvent.drop(dropZone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata();
     await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect(await screen.findByRole("heading", { name: "My submissions" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("submitted successfully");
+    expect(records()).toHaveLength(1);
+    expect(records()[0]).toMatchObject({ vendor: "Northstar Data", agreementType: "Master services agreement", businessUnit: "Shared services", neededBy: "2026-12-01", status: "Needs review", submittedBy: "Prototype user" });
+    expect(records()[0].id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(records()[0].findings[0].category).toBe("Governing Law");
+    expect(Number.isNaN(Date.parse(records()[0].submittedAt))).toBe(false);
+  });
+});
 
-    // Governing Law is one of the 12 approved categories and matches this text.
-    // Match the detail heading specifically: the category name also appears in
-    // the findings list and in the manual-add dropdown.
-    expect(
-      await screen.findByRole("heading", { level: 3, name: "Governing Law" }),
-    ).toBeTruthy();
-    expect(screen.getByText(/Governed by the laws of Georgia/i)).toBeTruthy();
+describe("KAN-40 validation and safe submission", () => {
+  it.each(fields)("requires %s with an associated accessible error", async (label, _value, message) => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata(label);
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    const input = screen.getByLabelText(new RegExp(label));
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(input.getAttribute("aria-describedby")!)?.textContent).toBe(message);
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole("alert").textContent).toContain("Correct the marked fields");
+    expect(extractText).not.toHaveBeenCalled();
+    expect(records()).toEqual([]);
+  });
+
+  it("requires a document and focuses the upload button", async () => {
+    const zone = await openIntake();
+    await fillMetadata();
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect(zone.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(zone);
+    expect(screen.getByText("Choose a PDF or text document.")).toBeTruthy();
+    expect(records()).toEqual([]);
+  });
+
+  it("rejects whitespace vendor values rather than saving a default", async () => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata("Vendor");
+    await userEvent.type(screen.getByLabelText(/Vendor/), "   ");
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect(screen.getByText("Enter a vendor.")).toBeTruthy();
+    expect(records()).toEqual([]);
+  });
+
+  it("keeps metadata after extraction failure and allows a retry", async () => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata();
+    vi.mocked(extractText).mockRejectedValueOnce(new Error("No readable text. Supply a readable copy."));
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect((await screen.findByRole("alert")).textContent).toContain("No readable text");
+    expect(records()).toEqual([]);
+    expect((screen.getByLabelText(/Vendor/) as HTMLInputElement).value).toBe("Northstar Data");
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect(await screen.findByRole("heading", { name: "My submissions" })).toBeTruthy();
+    expect(records()).toHaveLength(1);
+  });
+
+  it("does not report success or create a ghost record when persistence fails", async () => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata();
+    const save = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => { throw new DOMException("Quota exceeded", "QuotaExceededError"); });
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Your submission was not saved");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(records()).toEqual([]);
+    save.mockRestore();
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    expect(await screen.findByRole("heading", { name: "My submissions" })).toBeTruthy();
+    expect(records()).toHaveLength(1);
+  });
+
+  it("prevents duplicate submissions while extraction is pending", async () => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata();
+    let resolve!: (value: { text: string; warnings: string[] }) => void;
+    vi.mocked(extractText).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    fireEvent.submit(screen.getByRole("button", { name: /create review/i }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: /submitting/i }).closest("form")!);
+    expect(extractText).toHaveBeenCalledTimes(1);
+    resolve({ text: "Governing law", warnings: [] });
+    expect(await screen.findByRole("heading", { name: "My submissions" })).toBeTruthy();
+    expect(records()).toHaveLength(1);
+  });
+
+  it("reloads saved submissions and filters out another submitter", async () => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile()] } });
+    await fillMetadata();
+    await userEvent.click(screen.getByRole("button", { name: /create review/i }));
+    await screen.findByRole("heading", { name: "My submissions" });
+    const own = records()[0];
+    cleanup();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([own, { ...own, id: "other", name: "Another requester's contract", submittedBy: "Other requester" }]));
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "My submissions" }));
+    expect(screen.getByRole("heading", { name: own.name })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Another requester's contract" })).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

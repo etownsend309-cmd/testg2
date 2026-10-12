@@ -180,3 +180,14 @@ main { grid-column: 2; min-width: 0; }
   .intake-layout { grid-template-columns: 1fr; }.form-grid { grid-template-columns: 1fr; }.intake-aside { grid-template-columns: 1fr; }
   .review-body { grid-template-columns: 1fr; }.finding-nav { border-right: 0; border-bottom: 1px solid var(--line); }.finding-nav > button { display: inline-grid; width: 50%; }.manual-add { clear: both; }.report-row { grid-template-columns: minmax(130px, 1fr) 1fr 40px; }.report-row > *:nth-child(4), .report-row > *:nth-child(5) { display: none; }
 }
+
+.intake-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.intake-fields legend { margin-bottom: 16px; font-weight: 700; }
+.form-grid .error-message { margin: 0; font-weight: 400; }
+[aria-invalid="true"] { border-color: var(--red); }
+.drop-zone:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+.tracker-record { padding: 24px; margin-bottom: 14px; }
+.tracker-record h2 { margin-top: 0; }
+.tracker-record dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; font-size: 13px; }
+.tracker-record dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .sidebar nav { grid-template-columns: repeat(5, 1fr); } }

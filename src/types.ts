@@ -1,4 +1,4 @@
-export type View = "overview" | "intake" | "review" | "reports";
+export type View = "overview" | "tracker" | "intake" | "review" | "reports";
 
 export type Role = "Requester" | "Reviewer" | "Approver" | "Administrator";
 
@@ -24,6 +24,10 @@ export interface Agreement {
   id: string;
   name: string;
   vendor: string;
+  agreementType: string;
+  businessUnit: string;
+  /** Calendar date in YYYY-MM-DD format; empty for legacy prototype records. */
+  neededBy: string;
   submittedAt: string;
   submittedBy: string;
   status: AgreementStatus;
