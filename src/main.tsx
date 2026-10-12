@@ -32,7 +32,16 @@ async function loadView(): Promise<ComponentType> {
   }
 
   await import("./styles.css");
-  return (await import("./App")).default;
+  const { AuthGate } = await import("./components/AuthGate");
+  const App = (await import("./App")).default;
+
+  return function GatedApp() {
+    return (
+      <AuthGate>
+        {(user, signOut) => <App user={user} onSignOut={signOut} />}
+      </AuthGate>
+    );
+  };
 }
 
 loadView().then((View) => {
