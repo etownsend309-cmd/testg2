@@ -12,11 +12,14 @@
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
     "fixtures": "node --import tsx/esm scripts/generateFixtures.ts",
     "benchmark": "node --import tsx/esm scripts/runBenchmark.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:landing": "playwright test tests/e2e/landing.spec.ts --project=chromium",
     "test:e2e:ui": "playwright test --ui",
     "clean:artifacts": "node -e \"require('fs').rmSync('artifacts',{recursive:true,force:true});require('fs').mkdirSync('artifacts')\""
   },
@@ -26,6 +29,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -34,11 +38,15 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
     "jimp": "^1.6.1",
     "jsdom": "^30.1.1",
     "pdf-lib": "^1.17.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
+    "typescript-eslint": "8.71.1",
     "vite": "^7.3.0",
     "vitest": "^5.0.0"
   }

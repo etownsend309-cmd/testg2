@@ -108,8 +108,11 @@ npm run preview
 | `npm run build`        | Typecheck, then build for production into `dist/`                |
 | `npm run preview`      | Serve the production build                                       |
 | `npm run typecheck`    | TypeScript with no emit, across app and scripts                  |
+| `npm run lint`         | ESLint checks application, scripts, config and test code         |
+| `npm run lint:fix`     | Apply safe automated ESLint fixes                               |
 | `npm test`             | Vitest: unit and component tests                                 |
 | `npm run test:e2e`     | Playwright browser tests                                         |
+| `npm run test:e2e:landing` | Chromium smoke test of the default landing page and browser errors |
 | `npm run fixtures`     | Regenerate the test PDFs in `fixtures/generated/`                |
 | `npm run benchmark`    | Measure every fixture and rewrite `artifacts/pdf-benchmark-results.{json,md}` |
 
@@ -138,6 +141,36 @@ kept separate rather than being the only thing that verifies the interface.
 `--project=firefox`, or `--project=chrome` to drive a Google Chrome that is
 already installed instead of downloading Playwright's own Chromium — useful on a
 machine or network that cannot reach the Playwright CDN.
+
+## KAN-29 quality checks
+
+ESLint uses the JavaScript and TypeScript recommended flat configurations.
+Application files use browser globals; scripts, configuration and test files
+use Node globals. Dependencies, build output, reports and PDF fixtures are
+excluded. Warnings fail `npm run lint`; TypeScript remains a separate check.
+
+The landing-page test opens `/` in an isolated Playwright context, verifies
+the overview heading, navigation, summary, empty state and eight workflow
+stages, and fails on console errors or uncaught page exceptions. Error listeners
+are attached before navigation. This test does not replace the extraction suite.
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npx playwright install chromium
+npm run test:e2e:landing
+```
+
+If the browser CDN is unavailable but Google Chrome is installed, use
+`npm run test:e2e -- tests/e2e/landing.spec.ts --project=chrome`.
+Listing tests with `--list` verifies discovery only, not a browser pass.
+
+The KAN-29 ESLint configuration and landing-page test were predominantly
+AI-generated with ChatGPT Codex for Nadia Densu. Record module ownership and
+comprehension review in the KAN-72 provenance log.
 
 ## Technology stack
 

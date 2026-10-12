@@ -12,7 +12,7 @@
 // browser too. Using it in both places means the benchmark measures exactly the
 // same code path the app runs, with no second bundle to keep in sync.
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { PDFDocumentProxy, TextItem } from "pdfjs-dist/types/src/display/api";
+import type { TextItem } from "pdfjs-dist/types/src/display/api";
 
 import { buildContentOrderText } from "./contentOrder";
 import { reconstructCoordinateOrder } from "./coordinateOrder";
@@ -133,7 +133,6 @@ export async function extractPdf(
   let hardError: string | null = null;
   let pageCount = 0;
   let pagesWithImages = 0;
-  let doc: PDFDocumentProxy | null = null;
   let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
 
   try {
@@ -148,7 +147,7 @@ export async function extractPdf(
       stopAtErrors: false,
     });
 
-    doc = await withTimeout(loadingTask.promise, timeoutMs, "Parsing the document");
+    const doc = await withTimeout(loadingTask.promise, timeoutMs, "Parsing the document");
     pageCount = doc.numPages;
 
     if (pageCount === 0) {

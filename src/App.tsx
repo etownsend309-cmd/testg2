@@ -384,6 +384,8 @@ function ReviewQueue({
 
   useEffect(() => {
     setActiveFindingId(active?.findings[0]?.id);
+    // Reset selection only when switching agreements, not when editing a finding.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 
   if (!agreements.length || !active) {
