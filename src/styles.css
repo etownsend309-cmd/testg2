@@ -42,6 +42,10 @@ button { cursor: pointer; }
 .sidebar-note a:hover { text-decoration: underline; }
 .eyebrow { color: var(--green); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .sidebar .eyebrow { color: #77cdb1; }
+.sidebar-account { margin-top: 12px; }
+.sidebar-account p { overflow-wrap: anywhere; }
+.sign-out-link { margin-top: 10px; padding: 0; border: 0; background: none; color: #77cdb1; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.sign-out-link:hover { text-decoration: underline; }
 
 main { grid-column: 2; min-width: 0; }
 .topbar { height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 42px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.86); backdrop-filter: blur(12px); }

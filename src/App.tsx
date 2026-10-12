@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { User } from "@netlify/identity";
 import { Intake } from "./components/Intake";
 import { playbook } from "./lib/analyze";
 import type {
@@ -10,8 +11,6 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "clausepilot-agreements-v1";
-// Replace with the authenticated user ID when login is connected.
-const REQUESTER_ID = "Prototype user";
 
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat("en-US", {
@@ -53,7 +52,8 @@ function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default function App() {
+export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+  const requesterId = user.email ?? user.id;
   const [view, setView] = useState<View>("overview");
   const [role, setRole] = useState<Role>("Reviewer");
   const [agreements, setAgreements] = useState<Agreement[]>(() => {
@@ -136,6 +136,11 @@ export default function App() {
           <p>Data stays in this browser. No contract is sent to an AI service.</p>
           <a href="?view=extraction-poc">Extraction test harness →</a>
         </div>
+        <div className="sidebar-note sidebar-account">
+          <span className="eyebrow">Signed in</span>
+          <p>{requesterId}</p>
+          <button type="button" className="sign-out-link" onClick={onSignOut}>Sign out</button>
+        </div>
       </aside>
 
       <main>
@@ -158,11 +163,11 @@ export default function App() {
         <div className="page-wrap">
           {notice && <p className="permission-banner" role="status">{notice}</p>}
           {saveError && <p className="error-message" role="alert">{saveError}</p>}
-          {view === "tracker" && <RequesterTracker agreements={agreements.filter((item) => item.submittedBy === REQUESTER_ID)} />}
+          {view === "tracker" && <RequesterTracker agreements={agreements.filter((item) => item.submittedBy === requesterId)} />}
           {view === "overview" && (
             <Overview agreements={agreements} onNew={() => startIntake()} onReview={openReview} />
           )}
-          {view === "intake" && <Intake submittedBy={REQUESTER_ID} onAdd={addAgreement} />}
+          {view === "intake" && <Intake submittedBy={requesterId} onAdd={addAgreement} />}
           {view === "review" && (
             <ReviewQueue
               agreements={agreements}
@@ -316,8 +321,6 @@ function ReviewQueue({
 
   useEffect(() => {
     setActiveFindingId(active?.findings[0]?.id);
-    // Reset selection only when switching agreements, not when editing a finding.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 
   if (!agreements.length || !active) {
