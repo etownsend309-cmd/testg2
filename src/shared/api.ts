@@ -101,6 +101,21 @@ export interface ManualFindingInput {
   note?: string;
 }
 
+/** Finding counts for one playbook category, across the agreements the person may see. */
+export interface CategoryReportRow {
+  category: string;
+  total: number;
+  accepted: number;
+  escalated: number;
+}
+
+export interface CategoryReport {
+  /** How many agreements the counts cover. */
+  agreementCount: number;
+  /** One row per approved category, in playbook order, including categories with no findings. */
+  categories: CategoryReportRow[];
+}
+
 export interface ManagedUser {
   id: string;
   email: string;

@@ -14,6 +14,7 @@ import {
   type AgreementDetail,
   type AgreementStatusCode,
   type AgreementSummary,
+  type CategoryReport,
   type DocumentRecord,
   type FindingDecisionCode,
   type FindingDecisionInput,
@@ -127,6 +128,31 @@ export async function listAgreements(db: Queryable): Promise<AgreementSummary[]>
       ORDER BY a.submitted_at DESC`,
   );
   return rows.map(toSummary);
+}
+
+/**
+ * Finding counts per playbook category. Row-level security limits both
+ * queries to the agreements this person may see, so a requester's report
+ * covers only their own submissions.
+ */
+export async function categoryReport(db: Queryable): Promise<CategoryReport> {
+  const agreements = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM agreements");
+  const { rows } = await db.query<{ category: string; total: number; accepted: number; escalated: number }>(
+    `SELECT f.category,
+            count(*)::int AS total,
+            count(*) FILTER (WHERE f.decision = 'accepted')::int AS accepted,
+            count(*) FILTER (WHERE f.decision = 'escalated')::int AS escalated
+       FROM findings f JOIN agreements a ON a.id = f.agreement_id
+      GROUP BY f.category`,
+  );
+  const byCategory = new Map(rows.map((row) => [row.category, row]));
+  return {
+    agreementCount: agreements.rows[0]?.count ?? 0,
+    categories: playbook.map(({ name }) => {
+      const row = byCategory.get(name);
+      return { category: name, total: row?.total ?? 0, accepted: row?.accepted ?? 0, escalated: row?.escalated ?? 0 };
+    }),
+  };
 }
 
 export async function getAgreement(db: Queryable, id: string): Promise<AgreementDetail> {

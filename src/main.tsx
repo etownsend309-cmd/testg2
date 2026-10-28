@@ -41,11 +41,11 @@ async function loadView(): Promise<ComponentType> {
   return function GatedApp() {
     return (
       <AuthGate>
-        {(user, signOut) => (
+        {(_user, signOut) => (
           <SessionGate onSignOut={signOut}>
             {(session) => (
               <App
-                user={{ id: user.id, email: session.email }}
+                user={{ id: session.id, email: session.email }}
                 displayName={session.displayName}
                 views={availableViews(session)}
                 onSignOut={signOut}

@@ -9,6 +9,7 @@ import type {
   AgreementDetail,
   AgreementSummary,
   ApiErrorBody,
+  CategoryReport,
   DocumentRecord,
   FindingDecisionInput,
   ManagedUser,
@@ -79,6 +80,8 @@ export const api = {
   },
   /** A URL the browser can open to download the file; access is checked when it is requested. */
   documentUrl: (documentId: string) => `/api/documents/${encodeURIComponent(documentId)}`,
+
+  categoryReport: () => request<CategoryReport>("/api/reports/categories"),
 
   listUsers: () => request<ManagedUser[]>("/api/users"),
   updateUserAccess: (userId: string, input: UserAccessInput) =>

@@ -1,14 +1,18 @@
 import { useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { demoAgreementText } from "../data";
-import { analyzeAgreement } from "../lib/analyze";
 import { extractText } from "../lib/extractText";
-import type { Agreement } from "../types";
+import { LIMITS, type NewAgreementInput } from "../shared/api";
 
 type RequiredField = "document" | "vendor" | "agreementType" | "businessUnit" | "neededBy";
 type Errors = Partial<Record<RequiredField, string>>;
 
-export function Intake({ onAdd, submittedBy }: { onAdd: (agreement: Agreement) => void; submittedBy: string }) {
+/**
+ * The submission form. Text is extracted here, in the browser; `onSubmit`
+ * sends the details and the original file to the server and rejects with a
+ * message for the person if the agreement was not saved.
+ */
+export function Intake({ onSubmit }: { onSubmit: (input: NewAgreementInput, file: File) => Promise<void> }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const inFlight = useRef(false);
@@ -45,6 +49,7 @@ export function Intake({ onAdd, submittedBy }: { onAdd: (agreement: Agreement) =
     if (inFlight.current) return;
     const next: Errors = {};
     if (!file) next.document = "Choose a PDF or text document.";
+    else if (file.size > LIMITS.documentBytes) next.document = "Choose a file of 25 MB or less.";
     if (!vendor.trim()) next.vendor = "Enter a vendor.";
     if (!agreementType.trim()) next.agreementType = "Enter an agreement type.";
     if (!businessUnit.trim()) next.businessUnit = "Enter a business unit.";
@@ -64,14 +69,12 @@ export function Intake({ onAdd, submittedBy }: { onAdd: (agreement: Agreement) =
     setIsLoading(true);
     try {
       const document = await extractText(file!);
-      onAdd({
-        id: crypto.randomUUID(), name: title.trim() || file!.name,
+      await onSubmit({
+        name: title.trim() || file!.name,
         vendor: vendor.trim(), agreementType: agreementType.trim(), businessUnit: businessUnit.trim(), neededBy,
-        submittedAt: new Date().toISOString(), submittedBy, status: "Needs review",
         rawText: document.text, pageCount: document.pageCount,
         extractionStrategy: document.strategy, extractionWarnings: document.warnings,
-        findings: analyzeAgreement(document.text),
-      });
+      }, file!);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Submission failed. Your agreement was not saved. Try again.");
     } finally {
@@ -113,7 +116,7 @@ export function Intake({ onAdd, submittedBy }: { onAdd: (agreement: Agreement) =
           <div className="form-actions"><button type="button" className="secondary-button" onClick={loadDemo}>Load demo agreement</button><button type="submit" className="primary-button">{isLoading ? "Submitting…" : "Create review →"}</button></div>
         </fieldset>
       </form>
-      <aside className="intake-aside"><div className="aside-block"><div><strong>Local prototype</strong><p>Your submission is saved in this browser. The demo requester identity will be replaced when login is connected.</p></div></div><div className="aside-block"><div><strong>Track your submission</strong><p>After submission, My submissions shows your reference number, details, and review status.</p></div></div></aside>
+      <aside className="intake-aside"><div className="aside-block"><div><strong>Saved to ClausePilot</strong><p>Text is extracted in your browser. The details, extracted text and original file are then stored in ClausePilot, where reviewers can see them. Don't submit real confidential agreements to this prototype.</p></div></div><div className="aside-block"><div><strong>Track your submission</strong><p>After submission, My submissions shows your reference number, details, and review status.</p></div></div></aside>
     </div>
   </section>;
 }
