@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./components/Icon";
 import { Intake } from "./components/Intake";
+import { UsersAdmin } from "./components/UsersAdmin";
 import { api } from "./lib/api";
 import { playbook } from "./lib/analyze";
 import {
@@ -237,6 +238,12 @@ export default function App({ user, views, displayName, onSignOut }: AppProps) {
     setView("intake");
   };
 
+  // Only the Administrator view offers Users; switching away from it leaves the page.
+  const showUsers = role === "Administrator";
+  useEffect(() => {
+    if (view === "users" && !showUsers) setView("overview");
+  }, [view, showUsers]);
+
   const navigate = (next: View) => {
     setSaveError("");
     setView(next);
@@ -257,6 +264,7 @@ export default function App({ user, views, displayName, onSignOut }: AppProps) {
           <NavButton active={view === "tracker"} icon="file" label="My submissions" onClick={() => navigate("tracker")} />
           <NavButton active={view === "review"} icon="review" label="Review queue" count={pending} onClick={() => navigate("review")} />
           <NavButton active={view === "reports"} icon="reports" label="Reports" onClick={() => navigate("reports")} />
+          {showUsers && <NavButton active={view === "users"} icon="users" label="Users" onClick={() => { setNotice(""); navigate("users"); }} />}
         </nav>
         <div className="sidebar-note">
           <span className="eyebrow">Prototype mode</span>
@@ -295,7 +303,7 @@ export default function App({ user, views, displayName, onSignOut }: AppProps) {
           */}
           <div role="status">{notice && <p className="permission-banner">{notice}</p>}</div>
           {saveError && <p className="error-message" role="alert">{saveError}</p>}
-          {view !== "intake" && view !== "reports" && listState.kind !== "ready" ? (
+          {view !== "intake" && view !== "reports" && view !== "users" && listState.kind !== "ready" ? (
             <ListPlaceholder state={listState} onRetry={() => { setListState({ kind: "loading" }); void loadList(); }} />
           ) : (
             <>
@@ -320,6 +328,7 @@ export default function App({ user, views, displayName, onSignOut }: AppProps) {
                 />
               )}
               {view === "reports" && <Reports />}
+              {view === "users" && showUsers && <UsersAdmin currentUserId={user.id} onNotice={setNotice} />}
             </>
           )}
         </div>
@@ -349,7 +358,7 @@ function NavButton({
   onClick,
 }: {
   active: boolean;
-  icon: "home" | "upload" | "review" | "reports" | "file";
+  icon: "home" | "upload" | "review" | "reports" | "file" | "users";
   label: string;
   count?: number;
   onClick: () => void;

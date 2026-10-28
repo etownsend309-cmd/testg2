@@ -1,4 +1,4 @@
-export type View = "overview" | "tracker" | "intake" | "review" | "reports";
+export type View = "overview" | "tracker" | "intake" | "review" | "reports" | "users";
 
 export type Role = "Requester" | "Reviewer" | "Approver" | "Administrator";
 

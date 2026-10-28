@@ -25,8 +25,10 @@ const servers = new WeakMap<object, FakeServer>();
  * See identitySession.ts for why the session is seeded rather than performed,
  * and for what the two halves are.
  */
-export const test = base.extend<{ server: FakeServer }>({
-  page: async ({ page }, use) => {
+export const test = base.extend<{ server: FakeServer; account: SessionUser }>({
+  // Override per file or describe block with `test.use({ account: { ... } })`.
+  account: [sessionUser, { option: true }],
+  page: async ({ page, account }, use) => {
     const { token, storedUser } = identitySession(ORIGIN);
     await page.context().addCookies([{ name: NF_JWT_COOKIE, value: token, url: ORIGIN }]);
     // An init script rather than a single write, so the session survives the
@@ -37,7 +39,7 @@ export const test = base.extend<{ server: FakeServer }>({
     );
     // The Vite dev server has no Netlify Functions, so the API is faked per
     // page. The real API is covered by tests/integration against a database.
-    servers.set(page, await installFakeServer(page, sessionUser));
+    servers.set(page, await installFakeServer(page, account));
     await use(page);
   },
   server: async ({ page }, use) => {
