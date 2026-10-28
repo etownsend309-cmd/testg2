@@ -30,18 +30,23 @@ import type { IdentityUser } from "../../server/session.ts";
 const ORIGIN = "https://clausepilot.example";
 const MIGRATIONS = new URL("../../netlify/database/migrations", import.meta.url).pathname;
 const CLEAR_MIGRATION = "20261028183000_clear_agreement_data.sql";
+const REMOVE_USERS_MIGRATION = "20261028192000_remove_other_users.sql";
 
-/**
- * Every migration except the clean start, which deletes the demo agreements
- * these tests are written against. The clean start has its own test below.
- */
-const FIXTURE_MIGRATIONS = (() => {
+/** A directory holding every migration except the named ones. */
+function migrationsWithout(...skip: string[]) {
   const dir = mkdtempSync(path.join(tmpdir(), "clausepilot-migrations-"));
   for (const file of readdirSync(MIGRATIONS)) {
-    if (file !== CLEAR_MIGRATION) copyFileSync(path.join(MIGRATIONS, file), path.join(dir, file));
+    if (!skip.includes(file)) copyFileSync(path.join(MIGRATIONS, file), path.join(dir, file));
   }
   return dir;
-})();
+}
+
+/**
+ * Every migration except the production clean-ups, which delete the demo
+ * agreements and accounts these tests are written against. Each clean-up has
+ * its own tests below.
+ */
+const FIXTURE_MIGRATIONS = migrationsWithout(CLEAR_MIGRATION, REMOVE_USERS_MIGRATION);
 
 /** Netlify Identity users; the seeded app accounts are claimed by these emails. */
 const people = {
@@ -51,6 +56,8 @@ const people = {
   admin: { id: "idp-admin", email: "admin@example.test", name: "Alex" },
   stranger: { id: "idp-stranger", email: "stranger@example.test", name: "Sam" },
   founder: { id: "idp-founder", email: "Founder@Example.test", name: "Fran" },
+  owner: { id: "idp-owner", email: "etownsend309@gmail.com", name: "E Townsend" },
+  partner: { id: "idp-partner", email: "EJT41483@uga.edu", name: "EJT" },
 } satisfies Record<string, IdentityUser>;
 type Person = keyof typeof people;
 
@@ -476,7 +483,7 @@ describe("clean start migration", () => {
     const rolesBefore = await count("SELECT count(*) AS n FROM user_roles");
     expect(await count("SELECT count(*) AS n FROM agreements")).toBe(5);
 
-    await netlifyDb.applyMigrations(MIGRATIONS);
+    await netlifyDb.applyMigrations(migrationsWithout(REMOVE_USERS_MIGRATION));
 
     for (const table of ["agreements", "findings", "agreement_documents"]) {
       expect(await count(`SELECT count(*) AS n FROM ${table}`), table).toBe(0);
@@ -494,5 +501,50 @@ describe("clean start migration", () => {
     // The workspace keeps working afterwards.
     const created = await callJson<AgreementDetail>("/api/agreements", { as: "requester", method: "POST", body: newAgreement });
     expect(created.status).toBe(201);
+  });
+});
+
+describe("removing every account but two", () => {
+  const emails = async () => (await pool.query<{ email: string }>("SELECT email FROM app_users ORDER BY email")).rows.map((r) => r.email);
+
+  it("keeps only the two named accounts, with their access, and clears other people from the history", async () => {
+    // Both kept people have signed in, and an administrator has changed someone's access.
+    await callJson("/api/session", { as: "owner" });
+    const partner = await callJson<SessionUser>("/api/session", { as: "partner" });
+    const founder = await callJson<SessionUser>("/api/session", { as: "founder" });
+    await callJson(`/api/users/${partner.body.id}/access`, {
+      as: "founder",
+      method: "PUT",
+      body: { roles: ["reviewer"], approve: true, isActive: true },
+    });
+
+    // The clean start runs first in production, so no agreement refers to anyone.
+    await netlifyDb.applyMigrations(MIGRATIONS);
+
+    expect(await emails()).toEqual(["ejt41483@uga.edu", "etownsend309@gmail.com"]);
+    const kept = await callJson<SessionUser>("/api/session", { as: "partner" });
+    expect(kept.body).toMatchObject({ id: partner.body.id, roles: ["reviewer"], permissions: ["approve"] });
+
+    const actors = await pool.query<{ actor_id: string | null }>(
+      "SELECT actor_id FROM audit_events WHERE action = 'user.access_changed'",
+    );
+    expect(actors.rows).toEqual([{ actor_id: null }]);
+    expect(await pool.query("SELECT 1 FROM app_users WHERE id = $1", [founder.body.id])).toMatchObject({ rowCount: 0 });
+
+    // A removed person who signs in again only gets a fresh Requester account.
+    const returning = await callJson<SessionUser>("/api/session", { as: "reviewer" });
+    expect(returning.body.roles).toEqual(["requester"]);
+    expect(returning.body.id).not.toBe(SEEDED.reviewerUser);
+  });
+
+  it("refuses, removing nobody, while an agreement still needs one of the people", async () => {
+    await callJson("/api/session", { as: "owner" });
+    const before = await emails();
+
+    // The demo agreements are still here, submitted by accounts that would go.
+    await expect(netlifyDb.applyMigrations(migrationsWithout(CLEAR_MIGRATION))).rejects.toThrow(
+      /Not removing accounts: .*requester@example\.test/,
+    );
+    expect(await emails()).toEqual(before);
   });
 });
