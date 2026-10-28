@@ -1,6 +1,11 @@
 import { StrictMode, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 
+import { clearLegacyAgreements } from "./lib/legacyStorage";
+
+// Agreements now live on the server; drop any copy an older version left in this browser.
+clearLegacyAgreements();
+
 const container = document.getElementById("root");
 if (!container) throw new Error("Root element #root was not found in index.html.");
 

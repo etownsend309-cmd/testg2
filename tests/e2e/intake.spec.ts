@@ -150,3 +150,16 @@ test("a reviewer records decisions and completes the review", async ({ page, ser
   await page.getByRole("button", { name: "Reports" }).click();
   await expect(page.getByText("1 agreement visible to you")).toBeVisible();
 });
+
+test("agreements an older version left in browser storage are removed on load", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText(requester.email)).toBeVisible();
+  await page.evaluate(() => localStorage.setItem("clausepilot-agreements-v1", JSON.stringify([{ id: "old", rawText: "contract text" }])));
+
+  await page.reload();
+  await expect(page.getByText(requester.email)).toBeVisible();
+
+  expect(await page.evaluate(() => localStorage.getItem("clausepilot-agreements-v1"))).toBeNull();
+  // Still signed in: only the old records were removed.
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+});

@@ -36,7 +36,9 @@ confidential agreements.**
 ### Where agreements are stored
 
 The browser extracts the text, then sends the submission to the API. Nothing
-about an agreement is kept in browser storage.
+about an agreement is kept in browser storage. Records saved there by earlier
+versions (the `clausepilot-agreements-v1` key) are deleted, not migrated, the
+next time the page loads.
 
 | What | Where |
 | ---- | ----- |
