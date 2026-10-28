@@ -19,8 +19,10 @@ import type {
   CategoryReport,
   DocumentRecord,
   FindingDecisionInput,
+  ManagedUser,
   ManualFindingInput,
   NewAgreementInput,
+  UserAccessInput,
 } from "../../../src/shared/api";
 
 // The real error class, not the mocked module, since tests mock src/lib/api with this file.
@@ -36,6 +38,7 @@ export const signedInUser = { id: "a0000000-0000-4000-8000-000000000001", email:
 const submitter = { id: signedInUser.id, email: signedInUser.email, displayName: "Riley Requester" };
 
 let store = new Map<string, AgreementDetail>();
+let accounts = new Map<string, ManagedUser>();
 let counter = 0;
 const nextId = () => `00000000-0000-4000-8000-${String(++counter).padStart(12, "0")}`;
 const copy = <T>(value: T): T => structuredClone(value);
@@ -101,6 +104,28 @@ export function makeAgreement(overrides: Partial<AgreementDetail> = {}): Agreeme
 export function seed(...agreements: AgreementDetail[]) {
   for (const agreement of agreements) store.set(agreement.id, copy(agreement));
 }
+
+/** Builds an account; tests seed them with `seedUsers`. */
+export function makeUser(overrides: Partial<ManagedUser> = {}): ManagedUser {
+  return {
+    id: nextId(),
+    email: "someone@example.test",
+    displayName: "Someone",
+    isActive: true,
+    hasSignedIn: true,
+    lastSeenAt: "2026-10-27T15:00:00.000Z",
+    roles: ["requester"],
+    permissions: [],
+    ...overrides,
+  };
+}
+
+export function seedUsers(...users: ManagedUser[]) {
+  for (const user of users) accounts.set(user.id, copy(user));
+}
+
+/** The accounts the fake server holds, by email. */
+export const storedUsers = () => [...accounts.values()].sort((a, b) => a.email.localeCompare(b.email)).map(copy);
 
 /** What the fake server currently holds, newest first. */
 export const stored = () => [...store.values()].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)).map(copy);
@@ -188,13 +213,25 @@ export const fakeApi = {
       }),
     };
   }),
-  listUsers: vi.fn(),
-  updateUserAccess: vi.fn(),
+  listUsers: vi.fn(async (): Promise<ManagedUser[]> => storedUsers()),
+  updateUserAccess: vi.fn(async (userId: string, input: UserAccessInput): Promise<ManagedUser> => {
+    const user = accounts.get(userId);
+    if (!user) throw new ApiRequestError(404, "That account was not found.");
+    if (input.roles.length === 0) throw new ApiRequestError(400, "Give the account at least one role, or deactivate it instead.");
+    if (input.approve && !input.roles.includes("reviewer") && !input.roles.includes("administrator")) {
+      throw new ApiRequestError(400, "The Approver permission requires the Reviewer or Administrator role.");
+    }
+    user.roles = [...input.roles];
+    user.permissions = input.approve ? ["approve"] : [];
+    user.isActive = input.isActive;
+    return copy(user);
+  }),
 };
 
 /** Empties the store and restores every method's default behaviour. */
 export function resetFakeApi() {
   store = new Map();
+  accounts = new Map();
   counter = 0;
   for (const method of Object.values(fakeApi)) {
     // mockReset drops queued one-off behaviour and restores the implementation above.

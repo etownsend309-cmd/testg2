@@ -80,6 +80,26 @@ set the **`BOOTSTRAP_ADMIN_EMAILS`** environment variable on the Netlify site
 (comma-separated). Anyone signing in with one of those emails is made an
 Administrator.
 
+### Assigning roles
+
+Administrators manage access on the **Users** page. Switch "Viewing as" to
+**Administrator**, then choose **Users** in the sidebar. Each person has
+checkboxes for Requester, Reviewer, Administrator, Approver and Active. Change
+them, then **Save changes**.
+
+- People appear on the page after their first sign-in. Invite them from the
+  Netlify Identity dashboard first.
+- Approver needs Reviewer or Administrator. Removing both also clears Approver.
+- An account needs at least one role. To cut someone off, clear **Active**
+  instead; that keeps their history.
+- You can't remove your own Administrator role or deactivate yourself.
+- A change applies from the person's next request. Someone who is already
+  signed in may need to reload to see new views.
+
+Roles set in the Netlify Identity dashboard are not used. The server checks
+every change again (`PUT /api/users/:id/access`) and records it in the audit
+history.
+
 ### How the data is secured
 
 - **Row-level security.** Every API query runs inside a transaction that

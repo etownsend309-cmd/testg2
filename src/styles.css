@@ -226,3 +226,23 @@ main { grid-column: 2; min-width: 0; }
   .auth-form-side { place-items: start center; padding: 24px 18px 48px; }
   .auth-card { padding: 24px; }
 }
+
+/* Users (Administrator view) */
+.users-filter { display: grid; gap: 6px; max-width: 360px; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--navy); }
+.users-filter input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-weight: 400; background: #fff; }
+.users-count { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+.users-message { padding: 20px 24px; }
+.user-card { padding: 22px 24px; margin-bottom: 14px; }
+.user-card.inactive { opacity: .72; }
+.user-card-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.user-card-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--navy); font-size: 17px; overflow-wrap: anywhere; }
+.user-email { margin: 2px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.user-seen { margin: 0; color: var(--muted); font-size: 12px; }
+.user-tag { padding: 2px 8px; border-radius: 99px; background: #e9eeec; color: var(--navy); font-size: 11px; font-weight: 700; }
+.user-access { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 16px 0 0; padding: 0; border: 0; }
+.user-option { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 2px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.user-option label { font-size: 13px; font-weight: 700; color: var(--navy); cursor: pointer; }
+.user-option small { grid-column: 2; color: var(--muted); font-size: 12px; }
+.user-option.disabled { opacity: .7; }
+.user-option.disabled label { cursor: not-allowed; }
+.user-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 14px; }

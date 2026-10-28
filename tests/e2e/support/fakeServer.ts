@@ -17,14 +17,20 @@ import type {
   AgreementSummary,
   CategoryReport,
   FindingDecisionInput,
+  ManagedUser,
   ManualFindingInput,
   NewAgreementInput,
   SessionUser,
+  UserAccessInput,
 } from "../../../src/shared/api";
 
 export interface FakeServer {
   /** What the server currently holds, newest first. */
   agreements(): AgreementDetail[];
+  /** The accounts the server holds, by email. */
+  users(): ManagedUser[];
+  /** Adds accounts, as if those people had signed in. */
+  addUsers(...users: ManagedUser[]): void;
   /** Makes the next request to `path` (e.g. "POST /api/agreements") fail with this status and message. */
   failNext(request: string, status: number, error: string): void;
 }
@@ -32,6 +38,22 @@ export interface FakeServer {
 export async function installFakeServer(page: Page, session: SessionUser): Promise<FakeServer> {
   const store = new Map<string, AgreementDetail>();
   const failures = new Map<string, { status: number; error: string }>();
+  const accounts = new Map<string, ManagedUser>([
+    [
+      session.id,
+      {
+        id: session.id,
+        email: session.email,
+        displayName: session.displayName,
+        isActive: true,
+        hasSignedIn: true,
+        lastSeenAt: new Date().toISOString(),
+        roles: session.roles,
+        permissions: session.permissions,
+      },
+    ],
+  ]);
+  const byEmail = () => [...accounts.values()].sort((a, b) => a.email.localeCompare(b.email));
 
   const summary = (detail: AgreementDetail): AgreementSummary => ({
     id: detail.id,
@@ -66,6 +88,22 @@ export async function installFakeServer(page: Page, session: SessionUser): Promi
     }
 
     let match: RegExpMatchArray | null;
+    if (method === "GET" && path === "/api/users") {
+      if (!session.roles.includes("administrator")) return fail(route, 403, "Only administrators can manage accounts.");
+      return reply(route, byEmail());
+    }
+    if ((match = path.match(/^\/api\/users\/([^/]+)\/access$/)) && method === "PUT") {
+      if (!session.roles.includes("administrator")) return fail(route, 403, "Only administrators can manage accounts.");
+      const user = accounts.get(match[1]!);
+      if (!user) return fail(route, 404, "That account was not found.");
+      const input = request.postDataJSON() as UserAccessInput;
+      if (input.roles.length === 0) return fail(route, 400, "Give the account at least one role, or deactivate it instead.");
+      if (input.approve && !input.roles.includes("reviewer") && !input.roles.includes("administrator")) {
+        return fail(route, 400, "The Approver permission requires the Reviewer or Administrator role.");
+      }
+      Object.assign(user, { roles: input.roles, permissions: input.approve ? ["approve"] : [], isActive: input.isActive });
+      return reply(route, user);
+    }
     if (method === "GET" && path === "/api/session") return reply(route, session);
     if (method === "GET" && path === "/api/agreements") return reply(route, newest().map(summary));
     if (method === "GET" && path === "/api/reports/categories") {
@@ -191,6 +229,8 @@ export async function installFakeServer(page: Page, session: SessionUser): Promi
 
   return {
     agreements: () => structuredClone(newest()),
+    users: () => structuredClone(byEmail()),
+    addUsers: (...users) => users.forEach((user) => accounts.set(user.id, structuredClone(user))),
     failNext: (request, status, error) => failures.set(request, { status, error }),
   };
 }
