@@ -10,6 +10,7 @@ export type AgreementStatus =
   | "Approved"
   | "Escalated";
 
+/** A rule-based finding as the playbook rules produce it (see src/lib/analyze.ts). */
 export interface Finding {
   id: string;
   category: string;
@@ -18,25 +19,4 @@ export interface Finding {
   decision: FindingDecision;
   note: string;
   method: "Local rule" | "Manual";
-}
-
-export interface Agreement {
-  id: string;
-  name: string;
-  vendor: string;
-  agreementType: string;
-  businessUnit: string;
-  /** Calendar date in YYYY-MM-DD format; empty for legacy prototype records. */
-  neededBy: string;
-  submittedAt: string;
-  submittedBy: string;
-  status: AgreementStatus;
-  rawText: string;
-  pageCount?: number;
-  /** Which PDF.js reconstruction strategy produced `rawText`, for traceability. */
-  extractionStrategy?: string;
-  /** Non-fatal extraction notes, e.g. a low-text warning on a sparse document. */
-  extractionWarnings?: string[];
-  findings: Finding[];
-  completedAt?: string;
 }

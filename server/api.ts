@@ -13,6 +13,7 @@ import type { DocumentStore } from "./documentStore.ts";
 import { ApiError, badRequest, forbidden, notFound, toApiError, unauthorized } from "./errors.ts";
 import {
   addManualFinding,
+  categoryReport,
   completeReview,
   decideFinding,
   getAgreement,
@@ -138,6 +139,11 @@ const routes: Route[] = [
         },
       });
     },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/reports\/categories$/,
+    handler: async ({ db }) => json(await categoryReport(db)),
   },
   {
     method: "GET",

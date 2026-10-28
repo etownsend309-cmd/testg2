@@ -139,6 +139,8 @@ main { grid-column: 2; min-width: 0; }
 .queue-row:hover, .queue-row.selected { background: #f6faf8; }.queue-row.selected { box-shadow: inset 3px 0 var(--green); }
 .queue-row .status { grid-column: 2; }
 .review-detail { overflow: hidden; }
+.review-detail > p { margin: 0; padding: 14px 25px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.document-links a { color: var(--navy); font-weight: 600; }
 .document-heading { display: flex; align-items: flex-start; justify-content: space-between; padding: 23px 25px; border-bottom: 1px solid var(--line); }
 .document-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .review-body { min-height: 500px; display: grid; grid-template-columns: 220px minmax(0, 1fr); }

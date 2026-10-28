@@ -16,7 +16,8 @@ import { NetlifyDB } from "@netlify/database-dev";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import type { AgreementDetail, AgreementSummary, ManagedUser, SessionUser } from "../../src/shared/api.ts";
+import type { AgreementDetail, AgreementSummary, CategoryReport, ManagedUser, SessionUser } from "../../src/shared/api.ts";
+import { playbook } from "../../src/lib/analyze.ts";
 import { createApiHandler } from "../../server/api.ts";
 import { createDatabase, type ConnectionPool } from "../../server/db.ts";
 import { createMemoryDocumentStore } from "../../server/documentStore.ts";
@@ -345,6 +346,51 @@ describe("private document storage", () => {
     expect((await upload("requester", SEEDED.newAgreement, fake)).status).toBe(400);
     const exe = new File(["MZ"], "tool.exe", { type: "application/octet-stream" });
     expect((await upload("requester", SEEDED.newAgreement, exe)).status).toBe(400);
+  });
+});
+
+describe("category report", () => {
+  /** What the report should say, worked out from the agreements this person can open. */
+  async function expectedReport(as: Person) {
+    const list = await callJson<AgreementSummary[]>("/api/agreements", { as });
+    const details = await Promise.all(list.body.map((a) => callJson<AgreementDetail>(`/api/agreements/${a.id}`, { as })));
+    const findings = details.flatMap((d) => d.body.findings);
+    return {
+      agreementCount: list.body.length,
+      categories: playbook.map(({ name }) => {
+        const inCategory = findings.filter((f) => f.category === name);
+        return {
+          category: name,
+          total: inCategory.length,
+          accepted: inCategory.filter((f) => f.decision === "accepted").length,
+          escalated: inCategory.filter((f) => f.decision === "escalated").length,
+        };
+      }),
+    };
+  }
+
+  it.each(["requester", "reviewer"] as const)("counts only what the %s may see", async (as) => {
+    const { status, body } = await callJson<CategoryReport>("/api/reports/categories", { as });
+    expect(status).toBe(200);
+    expect(body).toEqual(await expectedReport(as));
+  });
+
+  it("lists every approved category, even with no findings", async () => {
+    const { body } = await callJson<CategoryReport>("/api/reports/categories", { as: "stranger" });
+    expect(body.agreementCount).toBe(0);
+    expect(body.categories.map((row) => row.category)).toEqual(playbook.map((c) => c.name));
+    expect(body.categories.every((row) => row.total === 0)).toBe(true);
+  });
+
+  it("reflects a decision as soon as it is recorded", async () => {
+    const before = await callJson<CategoryReport>("/api/reports/categories", { as: "reviewer" });
+    const detail = await callJson<AgreementDetail>(`/api/agreements/${SEEDED.newAgreement}`, { as: "reviewer" });
+    const finding = detail.body.findings[0]!;
+    await callJson(`/api/findings/${finding.id}`, { as: "reviewer", method: "PATCH", body: { decision: "escalated" } });
+
+    const after = await callJson<CategoryReport>("/api/reports/categories", { as: "reviewer" });
+    const row = (report: CategoryReport) => report.categories.find((r) => r.category === finding.category)!;
+    expect(row(after.body).escalated).toBe(row(before.body).escalated + 1);
   });
 });
 

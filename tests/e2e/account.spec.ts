@@ -29,6 +29,8 @@ test.describe("account panel", () => {
 
     // Keeping the account panel must not have un-hidden its siblings, which
     // is what a blunter override would have done.
-    await expect(page.getByText("Data stays in this browser.")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await expect(page.getByText("Agreements are saved to the ClausePilot database.", { exact: false })).toHaveCount(1);
+    await expect(page.getByText("Agreements are saved to the ClausePilot database.", { exact: false })).toBeHidden();
   });
 });
