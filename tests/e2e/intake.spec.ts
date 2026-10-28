@@ -1,5 +1,9 @@
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+
+// Starts signed in: the intake flow is behind the identity gate, and these
+// tests are about submission, not about authentication.
+import { expect, requester, test } from "./support/session";
 
 const fields = [
   ["Vendor", "Northstar Data", "Enter a vendor."],
@@ -10,6 +14,10 @@ const fields = [
 const fixture = (name: string) => path.resolve("fixtures/generated", name);
 async function openIntake(page: Page) {
   await page.goto("/");
+  // Asserted rather than assumed: if the seeded session stopped satisfying the
+  // gate, every test below would otherwise fail on a missing control with no
+  // hint that the sign-in card is what rendered.
+  await expect(page.getByText(requester.email)).toBeVisible();
   await page.getByLabel("Viewing as").selectOption("Requester");
   await page.getByRole("navigation").getByRole("button", { name: "New agreement" }).click();
 }
@@ -89,7 +97,8 @@ test("unreadable PDF gives a failure result without a record", async ({ page }) 
   await page.getByRole("button", { name: /Create review/ }).click();
   await expect(page.getByRole("alert")).toContainText(/scanned|image-only/i);
   await expect(page.getByLabel("Vendor")).toHaveValue("Northstar Data");
-  await expect(page.getByRole("status")).toHaveCount(0);
+  // The status region stays mounted so it can be announced; it must be empty.
+  await expect(page.getByRole("status")).toHaveText("");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("clausepilot-agreements-v1") ?? "[]"))).toEqual([]);
 });
 
@@ -100,7 +109,7 @@ test("browser storage failure never reports success", async ({ page }) => {
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new DOMException("Quota exceeded", "QuotaExceededError"); }; });
   await page.getByRole("button", { name: /Create review/ }).click();
   await expect(page.getByRole("alert")).toContainText("Your submission was not saved");
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText("");
   await page.getByRole("button", { name: "My submissions" }).click();
   await expect(page.getByRole("heading", { name: "No submissions yet" })).toBeVisible();
 });

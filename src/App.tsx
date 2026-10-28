@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@netlify/identity";
+import { Icon } from "./components/Icon";
 import { Intake } from "./components/Intake";
 import { playbook } from "./lib/analyze";
 import type {
@@ -26,18 +27,6 @@ const today = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 }).format(new Date());
 
-function Icon({ name }: { name: "home" | "upload" | "review" | "reports" | "file" | "shield" }) {
-  const paths = {
-    home: <path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5Z" />,
-    upload: <path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v6h14v-6" />,
-    review: <path d="M8 4h8m-9 3h10a2 2 0 0 1 2 2v11H5V9a2 2 0 0 1 2-2Zm2-3h6v5H9V4Zm0 9h6m-6 4h4" />,
-    reports: <path d="M4 20V10m6 10V4m6 16v-7m4 7H2" />,
-    file: <path d="M7 2h7l5 5v15H7V2Zm7 0v6h5M10 13h6m-6 4h6" />,
-    shield: <path d="M12 2 4.5 5v6c0 5 3.2 8.6 7.5 11 4.3-2.4 7.5-6 7.5-11V5L12 2Zm-3 10 2 2 4-5" />,
-  };
-  return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
-}
-
 function StatusPill({ status }: { status: Agreement["status"] }) {
   return <span className={`status status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
 }
@@ -52,7 +41,9 @@ function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+// Only the identity is read here, so the prop is narrowed to it. A full
+// Netlify `User` still satisfies this, and tests do not have to build one.
+export default function App({ user, onSignOut }: { user: Pick<User, "id" | "email">; onSignOut: () => void }) {
   const requesterId = user.email ?? user.id;
   const [view, setView] = useState<View>("overview");
   const [role, setRole] = useState<Role>("Reviewer");
@@ -75,12 +66,47 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   const [notice, setNotice] = useState("");
   const [saveError, setSaveError] = useState("");
 
+  /**
+   * The agreements as last written to storage.
+   *
+   * Extraction is awaited while the sidebar stays usable, so a reviewer can
+   * record a decision between a submission starting and finishing. Callers must
+   * build their next list from this rather than from `agreements`, which is
+   * fixed at the render that created the callback. A functional `setAgreements`
+   * updater would read the latest state but cannot replace this: the write has
+   * to happen before the state change so a rejected write can throw, and an
+   * updater must stay pure.
+   */
+  const agreementsRef = useRef(agreements);
+
+  /**
+   * Whether this session still owns the stored list.
+   *
+   * Signing out unmounts App, but an extraction already awaited keeps running
+   * and still holds this instance's `onAdd` and `agreementsRef`. Storage is not
+   * keyed by user, so a write landing after unmount would overwrite whatever
+   * the next session has saved since, and that session would keep showing the
+   * lost agreement until a reload. Set on mount, not just initialised, because
+   * StrictMode runs the cleanup once before the real mount.
+   */
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+
   const persist = (next: Agreement[]) => {
+    if (!live.current) {
+      throw new Error("You were signed out before this submission finished, so it was not saved. Sign in and submit it again.");
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       throw new Error("The agreement could not be saved in this browser. Free storage space or enable site storage, then try again. Your submission was not saved.");
     }
+    agreementsRef.current = next;
     setAgreements(next);
   };
 
@@ -93,14 +119,14 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   };
 
   const addAgreement = (agreement: Agreement) => {
-    persist([agreement, ...agreements]);
+    persist([agreement, ...agreementsRef.current]);
     setNotice(`Agreement "${agreement.name}" submitted successfully. Reference: ${agreement.id}. Status: Needs review.`);
     setView("tracker");
   };
 
   const updateAgreement = (updated: Agreement) => {
     try {
-      persist(agreements.map((agreement) => agreement.id === updated.id ? updated : agreement));
+      persist(agreementsRef.current.map((agreement) => agreement.id === updated.id ? updated : agreement));
       setSaveError("");
     } catch (reason) {
       setSaveError(reason instanceof Error ? reason.message : "The review could not be saved.");
@@ -161,7 +187,14 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
         </header>
 
         <div className="page-wrap">
-          {notice && <p className="permission-banner" role="status">{notice}</p>}
+          {/*
+            Stays mounted so only its contents change. Inserting a live region
+            and its text in the same update generally is not announced, because
+            a screen reader has to be observing the region before the change.
+            The intake form owns the only `role="alert"`, so this stays
+            `role="status"` rather than becoming a second alert region.
+          */}
+          <div role="status">{notice && <p className="permission-banner">{notice}</p>}</div>
           {saveError && <p className="error-message" role="alert">{saveError}</p>}
           {view === "tracker" && <RequesterTracker agreements={agreements.filter((item) => item.submittedBy === requesterId)} />}
           {view === "overview" && (
@@ -198,8 +231,16 @@ function NavButton({
   count?: number;
   onClick: () => void;
 }) {
+  // Below 760px the stylesheet hides both the label and the count badge to fit
+  // the nav into a row of icons, and the icon itself is aria-hidden. Without an
+  // explicit name these buttons are unnamed at that width, and the pending
+  // count disappears from the accessibility tree entirely.
   return (
-    <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>
+    <button
+      className={`nav-item ${active ? "active" : ""}`}
+      onClick={onClick}
+      aria-label={count ? `${label}, ${count} pending` : label}
+    >
       <Icon name={icon} />
       <span>{label}</span>
       {!!count && <strong>{count}</strong>}
@@ -321,6 +362,8 @@ function ReviewQueue({
 
   useEffect(() => {
     setActiveFindingId(active?.findings[0]?.id);
+    // Reset selection only when switching agreements, not when editing a finding.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 
   if (!agreements.length || !active) {

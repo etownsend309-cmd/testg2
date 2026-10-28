@@ -138,7 +138,8 @@ Node.
 PDF.js worker and real file downloads are involved. It needs a browser, so it is
 kept separate rather than being the only thing that verifies the interface.
 
-`npm run test:e2e` accepts a browser project: `--project=chromium` (default),
+`npm run test:e2e` runs all configured projects unless one is selected:
+`--project=chromium`,
 `--project=firefox`, or `--project=chrome` to drive a Google Chrome that is
 already installed instead of downloading Playwright's own Chromium — useful on a
 machine or network that cannot reach the Playwright CDN.
@@ -168,6 +169,11 @@ npm run test:e2e:landing
 If the browser CDN is unavailable but Google Chrome is installed, use
 `npm run test:e2e -- tests/e2e/landing.spec.ts --project=chrome`.
 Listing tests with `--list` verifies discovery only, not a browser pass.
+
+The `KAN-29 checks` GitHub Actions workflow runs a clean installation, lint,
+TypeScript checks, unit/component tests, the production build and the Chromium
+landing-page test on pushes and pull requests. Results appear in the repository's
+Actions tab. The workflow can also be started manually with **Run workflow**.
 
 The KAN-29 ESLint configuration and landing-page test were predominantly
 AI-generated with ChatGPT Codex for Nadia Densu. Record module ownership and

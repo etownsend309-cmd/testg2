@@ -17,6 +17,9 @@ import App from "../../src/App";
 import { extractText } from "../../src/lib/extractText";
 vi.mock("../../src/lib/extractText", () => ({ extractText: vi.fn() }));
 const STORAGE_KEY = "clausepilot-agreements-v1";
+/** Stands in for the signed-in Netlify user; App reads only the identity. */
+const signedInUser = { id: "test-requester-id", email: "requester@example.test" };
+const renderApp = () => render(<App user={signedInUser} onSignOut={() => {}} />);
 const fields = [
   ["Vendor", "Northstar Data", "Enter a vendor."],
   ["Agreement type", "Master services agreement", "Enter an agreement type."],
@@ -47,7 +50,7 @@ const txtFile = (name = "northstar-msa.txt") =>
 
 /** Move to the intake view and hand back its drop zone. */
 async function openIntake(): Promise<HTMLElement> {
-  render(<App />);
+  renderApp();
   // Scoped to the sidebar: the overview hero offers a "New agreement" button too.
   const nav = screen.getByRole("navigation", { name: /primary navigation/i });
   await userEvent.click(within(nav).getByRole("button", { name: /new agreement/i }));
@@ -93,7 +96,7 @@ describe("agreement intake", () => {
     expect(await screen.findByRole("heading", { name: "My submissions" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("submitted successfully");
     expect(records()).toHaveLength(1);
-    expect(records()[0]).toMatchObject({ vendor: "Northstar Data", agreementType: "Master services agreement", businessUnit: "Shared services", neededBy: "2026-12-01", status: "Needs review", submittedBy: "Prototype user" });
+    expect(records()[0]).toMatchObject({ vendor: "Northstar Data", agreementType: "Master services agreement", businessUnit: "Shared services", neededBy: "2026-12-01", status: "Needs review", submittedBy: signedInUser.email });
     expect(records()[0].id).toMatch(/^[0-9a-f-]{36}$/);
     expect(records()[0].findings[0].category).toBe("Governing Law");
     expect(Number.isNaN(Date.parse(records()[0].submittedAt))).toBe(false);
@@ -156,7 +159,8 @@ describe("KAN-40 validation and safe submission", () => {
     const save = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => { throw new DOMException("Quota exceeded", "QuotaExceededError"); });
     await userEvent.click(screen.getByRole("button", { name: /create review/i }));
     expect((await screen.findByRole("alert")).textContent).toContain("Your submission was not saved");
-    expect(screen.queryByRole("status")).toBeNull();
+    // The status region stays mounted so it can be announced; it must be empty.
+    expect(screen.getByRole("status").textContent).toBe("");
     expect(records()).toEqual([]);
     save.mockRestore();
     await userEvent.click(screen.getByRole("button", { name: /create review/i }));
@@ -187,10 +191,92 @@ describe("KAN-40 validation and safe submission", () => {
     const own = records()[0];
     cleanup();
     localStorage.setItem(STORAGE_KEY, JSON.stringify([own, { ...own, id: "other", name: "Another requester's contract", submittedBy: "Other requester" }]));
-    render(<App />);
+    renderApp();
     await userEvent.click(screen.getByRole("button", { name: "My submissions" }));
     expect(screen.getByRole("heading", { name: own.name })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Another requester's contract" })).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+});
+
+describe("concurrent submission and review", () => {
+  const existingAgreement = {
+    id: "existing-agreement",
+    name: "Pre-existing MSA.pdf",
+    vendor: "Acme Supply",
+    agreementType: "Master services agreement",
+    businessUnit: "Shared services",
+    neededBy: "2026-11-01",
+    submittedAt: "2026-10-01T12:00:00.000Z",
+    submittedBy: signedInUser.email,
+    status: "Needs review",
+    rawText: "GOVERNING LAW. Governed by the laws of Georgia.",
+    findings: [
+      {
+        id: "existing-finding",
+        category: "Governing Law",
+        confidence: 0.98,
+        sourceText: "Governed by the laws of Georgia.",
+        decision: "pending",
+        note: "",
+        method: "Local rule",
+      },
+    ],
+  };
+
+  /**
+   * Extraction is asynchronous, but the sidebar stays live while it runs: the
+   * disabled fieldset covers the form, not the navigation. A reviewer can
+   * therefore record a decision on another agreement mid-parse. Submission has
+   * to merge into whatever was saved in the meantime rather than into the list
+   * it captured when it started, or the decision is lost with no error — the
+   * stale write itself succeeds.
+   */
+  it("keeps a decision recorded while extraction is still in flight", async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([existingAgreement]));
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile("new-contract.txt")] } });
+    await fillMetadata();
+
+    let resolve!: (value: { text: string; warnings: string[] }) => void;
+    vi.mocked(extractText).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    fireEvent.submit(screen.getByRole("button", { name: /create review/i }).closest("form")!);
+
+    const nav = screen.getByRole("navigation", { name: /primary navigation/i });
+    await userEvent.click(within(nav).getByRole("button", { name: /review queue/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(records()[0].findings[0].decision).toBe("accepted");
+
+    resolve({ text: "GOVERNING LAW. Governed by the laws of Georgia.", warnings: [] });
+    expect(await screen.findByRole("heading", { name: "My submissions" })).toBeTruthy();
+
+    const saved = records();
+    expect(saved).toHaveLength(2);
+    const reviewed = saved.find((item: { id: string }) => item.id === existingAgreement.id);
+    expect(reviewed.findings[0].decision).toBe("accepted");
+    expect(reviewed.status).toBe("In review");
+  });
+
+  /**
+   * Sign out is in the sidebar, so it is reachable mid-extraction too, and it
+   * unmounts App while the submission is still awaiting its text. The stored
+   * list is shared by every account that uses the browser, so the abandoned
+   * submission must not write once the next session has started saving.
+   */
+  it("discards a submission abandoned by signing out mid-extraction", async () => {
+    const zone = await openIntake();
+    fireEvent.drop(zone, { dataTransfer: { files: [txtFile("abandoned.txt")] } });
+    await fillMetadata();
+
+    let resolve!: (value: { text: string; warnings: string[] }) => void;
+    vi.mocked(extractText).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    fireEvent.submit(screen.getByRole("button", { name: /create review/i }).closest("form")!);
+
+    cleanup();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([existingAgreement]));
+    resolve({ text: "GOVERNING LAW. Governed by the laws of Georgia.", warnings: [] });
+    await Promise.resolve();
+
+    expect(records()).toEqual([existingAgreement]);
   });
 });

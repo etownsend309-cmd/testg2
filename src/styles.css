@@ -178,7 +178,10 @@ main { grid-column: 2; min-width: 0; }
 
 @media (max-width: 760px) {
   .app-shell { display: block; }
-  .sidebar { position: static; width: 100%; height: auto; padding: 14px; }.brand { margin: 0 4px 14px; }.sidebar nav { grid-template-columns: repeat(4, 1fr); }.nav-item { display: flex; justify-content: center; padding: 10px 5px; }.nav-item span, .nav-item strong, .sidebar-note { display: none; }
+  .sidebar { position: static; width: 100%; height: auto; padding: 14px; }.brand { margin: 0 4px 14px; }.sidebar nav { grid-template-columns: repeat(4, 1fr); }.nav-item { display: flex; justify-content: center; padding: 10px 5px; }
+  /* The notes are informational and go to make room. The account panel shares
+     their class but holds the only Sign out control, so it is kept. */
+  .nav-item span, .nav-item strong, .sidebar-note:not(.sidebar-account) { display: none; }
   main { width: 100%; }.topbar { height: auto; padding: 14px 18px; }.role-switcher > span { display: none; }.page-wrap { padding: 28px 18px 48px; }
   .hero, .queue-heading { align-items: flex-start; flex-direction: column; }.metric-grid { grid-template-columns: 1fr 1fr; }.metric-card { min-height: 125px; }.agreement-row { grid-template-columns: 38px minmax(0, 1fr) 18px; }.finding-count, .agreement-row .status { display: none; }
   .intake-layout { grid-template-columns: 1fr; }.form-grid { grid-template-columns: 1fr; }.intake-aside { grid-template-columns: 1fr; }

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Icon } from "./Icon";
 import { demoAgreementText } from "../data";
 import { analyzeAgreement } from "../lib/analyze";
 import { extractText } from "../lib/extractText";
@@ -97,8 +98,8 @@ export function Intake({ onAdd, submittedBy }: { onAdd: (agreement: Agreement) =
           <div className="step-heading"><span>1</span><div><h2>Agreement document *</h2><p>Text-based PDF or TXT, up to 25 MB.</p></div></div>
           <input ref={fileInput} className="visually-hidden" tabIndex={-1} type="file" aria-label="Agreement document" accept="application/pdf,.pdf,text/plain,.txt" onChange={(event) => { chooseFile(event.target.files?.[0]); event.target.value = ""; }} />
           <button type="button" {...accessibility("document")} aria-label={file ? `Replace agreement document: ${file.name}` : "Drop an agreement here, or click to browse"} className={`drop-zone ${file ? "has-file" : ""}${dragging ? " dragging" : ""}`} onClick={() => fileInput.current?.click()} onDragOver={(event) => { event.preventDefault(); if (!inFlight.current) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); chooseFile(event.dataTransfer.files?.[0]); }}>
-            <span className="upload-mark" aria-hidden="true">?</span>
-            {file ? <><strong>{file.name}</strong><small>{(file.size / 1024).toFixed(1)} KB ? Click or drop to replace</small></> : <><strong>Drop an agreement here, or click to browse</strong><small>Text-based PDF or TXT</small></>}
+            <span className="upload-mark"><Icon name="upload" /></span>
+            {file ? <><strong>{file.name}</strong><small>{(file.size / 1024).toFixed(1)} KB · Click or drop to replace</small></> : <><strong>Drop an agreement here, or click to browse</strong><small>Text-based PDF or TXT</small></>}
           </button>
           {errorFor("document")}
           <div className="form-grid">
@@ -109,7 +110,7 @@ export function Intake({ onAdd, submittedBy }: { onAdd: (agreement: Agreement) =
             <label htmlFor="neededBy"><span>Needed-by date *</span><input {...accessibility("neededBy")} required type="date" value={neededBy} onChange={(event) => { setNeededBy(event.target.value); clearError("neededBy"); }} />{errorFor("neededBy")}</label>
           </div>
           <div role="alert">{Object.values(errors).some(Boolean) && <p className="error-message">Submission not completed. Correct the marked fields and try again.</p>}{error && <p className="error-message">{error}</p>}</div>
-          <div className="form-actions"><button type="button" className="secondary-button" onClick={loadDemo}>Load demo agreement</button><button type="submit" className="primary-button">{isLoading ? "Submitting?" : "Create review ?"}</button></div>
+          <div className="form-actions"><button type="button" className="secondary-button" onClick={loadDemo}>Load demo agreement</button><button type="submit" className="primary-button">{isLoading ? "Submitting…" : "Create review →"}</button></div>
         </fieldset>
       </form>
       <aside className="intake-aside"><div className="aside-block"><div><strong>Local prototype</strong><p>Your submission is saved in this browser. The demo requester identity will be replaced when login is connected.</p></div></div><div className="aside-block"><div><strong>Track your submission</strong><p>After submission, My submissions shows your reference number, details, and review status.</p></div></div></aside>
