@@ -12,6 +12,10 @@
  * row-level security policies, not just the service code above them.
  */
 
+import { copyFileSync, mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { NetlifyDB } from "@netlify/database-dev";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -25,6 +29,19 @@ import type { IdentityUser } from "../../server/session.ts";
 
 const ORIGIN = "https://clausepilot.example";
 const MIGRATIONS = new URL("../../netlify/database/migrations", import.meta.url).pathname;
+const CLEAR_MIGRATION = "20261028183000_clear_agreement_data.sql";
+
+/**
+ * Every migration except the clean start, which deletes the demo agreements
+ * these tests are written against. The clean start has its own test below.
+ */
+const FIXTURE_MIGRATIONS = (() => {
+  const dir = mkdtempSync(path.join(tmpdir(), "clausepilot-migrations-"));
+  for (const file of readdirSync(MIGRATIONS)) {
+    if (file !== CLEAR_MIGRATION) copyFileSync(path.join(MIGRATIONS, file), path.join(dir, file));
+  }
+  return dir;
+})();
 
 /** Netlify Identity users; the seeded app accounts are claimed by these emails. */
 const people = {
@@ -65,7 +82,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await netlifyDb.reset();
-  await netlifyDb.applyMigrations(MIGRATIONS);
+  await netlifyDb.applyMigrations(FIXTURE_MIGRATIONS);
   documents = createMemoryDocumentStore();
   handle = createApiHandler({
     database: createDatabase(pool as unknown as ConnectionPool),
@@ -442,5 +459,40 @@ describe("account administration", () => {
     const { status, body } = await callJson<{ error: string }>("/api/agreements", { as: "reviewer" });
     expect(status).toBe(403);
     expect(body.error).toMatch(/deactivated/);
+  });
+});
+
+describe("clean start migration", () => {
+  const count = async (sql: string) => Number((await pool.query<{ n: string }>(sql)).rows[0]!.n);
+
+  it("removes every agreement and its history but keeps accounts and access", async () => {
+    await callJson("/api/agreements", { as: "requester", method: "POST", body: newAgreement });
+    await callJson(`/api/users/${SEEDED.reviewerUser}/access`, {
+      as: "admin",
+      method: "PUT",
+      body: { roles: ["reviewer"], approve: true, isActive: true },
+    });
+    const accountsBefore = await count("SELECT count(*) AS n FROM app_users");
+    const rolesBefore = await count("SELECT count(*) AS n FROM user_roles");
+    expect(await count("SELECT count(*) AS n FROM agreements")).toBe(5);
+
+    await netlifyDb.applyMigrations(MIGRATIONS);
+
+    for (const table of ["agreements", "findings", "agreement_documents"]) {
+      expect(await count(`SELECT count(*) AS n FROM ${table}`), table).toBe(0);
+    }
+    expect(await count("SELECT count(*) AS n FROM audit_events WHERE action <> 'user.access_changed'")).toBe(0);
+    expect(await count("SELECT count(*) AS n FROM audit_events WHERE action = 'user.access_changed'")).toBe(1);
+    expect(await count("SELECT count(*) AS n FROM app_users")).toBe(accountsBefore);
+    expect(await count("SELECT count(*) AS n FROM user_roles")).toBe(rolesBefore);
+
+    const session = await callJson<SessionUser>("/api/session", { as: "reviewer" });
+    expect(session.body.permissions).toEqual(["approve"]);
+    const list = await callJson<AgreementSummary[]>("/api/agreements", { as: "reviewer" });
+    expect(list.body).toEqual([]);
+
+    // The workspace keeps working afterwards.
+    const created = await callJson<AgreementDetail>("/api/agreements", { as: "requester", method: "POST", body: newAgreement });
+    expect(created.status).toBe(201);
   });
 });

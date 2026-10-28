@@ -107,11 +107,19 @@ automatically on each deploy (production and deploy previews):
 2. `…_create_agreements.sql`: agreements, findings, documents and the audit trail
 3. `…_row_level_security.sql`: the application role, helper functions, policies and grants
 4. `…_seed_demo_data.sql`: four demo accounts and four sample agreements
+5. `…_clear_agreement_data.sql`: a clean start. Deletes every agreement, with
+   its findings, document records and audit history, and keeps accounts and
+   roles. A fresh database therefore starts with the demo accounts but no
+   agreements.
 
 The seeded accounts are `requester@`, `reviewer@`, `approver@` and
 `admin@example.test`. Each one is claimed by whoever first signs in with that
 email, and Identity is invite-only. To use them, invite those addresses from
 the Netlify Identity dashboard, or change the emails in a new migration.
+
+The API tests in `tests/integration/` apply every migration except the clean
+start, so they still run against the four sample agreements, and test the
+clean start separately.
 
 Never edit a migration that has been deployed. Add a new one instead.
 
