@@ -41,12 +41,24 @@ function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
-// Only the identity is read here, so the prop is narrowed to it. A full
-// Netlify `User` still satisfies this, and tests do not have to build one.
-export default function App({ user, onSignOut }: { user: Pick<User, "id" | "email">; onSignOut: () => void }) {
+interface AppProps {
+  // Only the identity is read here, so the prop is narrowed to it. A full
+  // Netlify `User` still satisfies this, and tests do not have to build one.
+  user: Pick<User, "id" | "email">;
+  /** The workspace views this person's roles allow, from the API session (see availableViews). */
+  views: Role[];
+  displayName?: string;
+  onSignOut: () => void;
+}
+
+export default function App({ user, views, displayName, onSignOut }: AppProps) {
   const requesterId = user.email ?? user.id;
   const [view, setView] = useState<View>("overview");
-  const [role, setRole] = useState<Role>("Reviewer");
+  // Start in the most review-oriented view the person holds, as the app
+  // always has; the switcher only ever offers views they are entitled to.
+  const [chosenRole, setRole] = useState<Role | undefined>(undefined);
+  const role: Role =
+    chosenRole && views.includes(chosenRole) ? chosenRole : (views.find((v) => v === "Reviewer") ?? views[0] ?? "Requester");
   const [agreements, setAgreements] = useState<Agreement[]>(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
@@ -164,6 +176,7 @@ export default function App({ user, onSignOut }: { user: Pick<User, "id" | "emai
         </div>
         <div className="sidebar-note sidebar-account">
           <span className="eyebrow">Signed in</span>
+          {displayName && <p className="account-name">{displayName}</p>}
           <p>{requesterId}</p>
           <button type="button" className="sign-out-link" onClick={onSignOut}>Sign out</button>
         </div>
@@ -177,11 +190,8 @@ export default function App({ user, onSignOut }: { user: Pick<User, "id" | "emai
           </div>
           <label className="role-switcher">
             <span>Viewing as</span>
-            <select value={role} onChange={(event) => setRole(event.target.value as Role)}>
-              <option>Requester</option>
-              <option>Reviewer</option>
-              <option>Approver</option>
-              <option>Administrator</option>
+            <select value={role} onChange={(event) => setRole(event.target.value as Role)} disabled={views.length < 2}>
+              {views.map((option) => <option key={option}>{option}</option>)}
             </select>
           </label>
         </header>

@@ -1,8 +1,18 @@
 import { test as base } from "@playwright/test";
 
+import type { SessionUser } from "../../../src/shared/api";
 import { GOTRUE_STORAGE_KEY, NF_JWT_COOKIE, identitySession, requester } from "./identitySession";
 
 const ORIGIN = "http://127.0.0.1:5173";
+
+/** The seeded requester's ClausePilot account, with a reviewing role so both sides of the workspace are reachable. */
+const sessionUser: SessionUser = {
+  id: "a0000000-0000-4000-8000-000000000001",
+  email: requester.email,
+  displayName: "Riley Requester",
+  roles: ["requester", "reviewer"],
+  permissions: [],
+};
 
 /**
  * A Playwright `test` whose page starts already signed in.
@@ -20,6 +30,12 @@ export const test = base.extend({
     await page.addInitScript(
       ([key, value]) => window.localStorage.setItem(key, value),
       [GOTRUE_STORAGE_KEY, storedUser] as const,
+    );
+    // The Vite dev server has no Netlify Functions, so answer the one API
+    // call the workspace makes on load. The API itself is covered by
+    // tests/integration against a real database.
+    await page.route("**/api/session", (route) =>
+      route.fulfill({ json: sessionUser }),
     );
     await use(page);
   },

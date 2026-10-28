@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Agreement review prototype plus the KAN-402 PDF extraction harness. Client-side only: React, TypeScript, Vite, PDF.js.",
+  "description": "Agreement review prototype plus the KAN-402 PDF extraction harness. React, TypeScript, Vite and PDF.js in the browser; Netlify Functions, Netlify Database and Netlify Blobs on the server.",
   "engines": {
     "node": ">=20.19"
   },
@@ -11,7 +11,7 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.server.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "fixtures": "node --import tsx/esm scripts/generateFixtures.ts",
@@ -24,6 +24,9 @@
     "clean:artifacts": "node -e \"require('fs').rmSync('artifacts',{recursive:true,force:true});require('fs').mkdirSync('artifacts')\""
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.7",
+    "@netlify/database": "^2.0.1",
+    "@netlify/functions": "^6.0.3",
     "@netlify/identity": "^2.0.0",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.0",
@@ -31,11 +34,13 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@netlify/database-dev": "^1.0.1",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/node": "^22.18.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
@@ -45,6 +50,7 @@
     "jimp": "^1.6.1",
     "jsdom": "^30.1.1",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.23.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "8.71.1",

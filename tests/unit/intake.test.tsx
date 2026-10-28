@@ -19,7 +19,9 @@ vi.mock("../../src/lib/extractText", () => ({ extractText: vi.fn() }));
 const STORAGE_KEY = "clausepilot-agreements-v1";
 /** Stands in for the signed-in Netlify user; App reads only the identity. */
 const signedInUser = { id: "test-requester-id", email: "requester@example.test" };
-const renderApp = () => render(<App user={signedInUser} onSignOut={() => {}} />);
+/** Every view, as before roles came from the server; these tests are about intake, not access. */
+const allViews = ["Requester", "Reviewer", "Approver", "Administrator"] as const;
+const renderApp = () => render(<App user={signedInUser} views={[...allViews]} onSignOut={() => {}} />);
 const fields = [
   ["Vendor", "Northstar Data", "Enter a vendor."],
   ["Agreement type", "Master services agreement", "Enter an agreement type."],
